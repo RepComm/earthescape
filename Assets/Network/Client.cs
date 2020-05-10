@@ -1,11 +1,12 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Threading;
 using System.Text;
 using System;
-using SimpleJSON;
 using UnityEngine;
+using SimpleJSON;
 
 public class Client
 {
@@ -20,15 +21,10 @@ public class Client
   int clientReceiveBufferLength = 0;
   bool clientKeepAlive = false;
 
-  public event MessageReceivedHandler messageReceivedEvent;
-  public EventArgs messageEventArgs = null;
-  public delegate void MessageReceivedHandler(Client client, EventArgs messageEvent);
+  public ConcurrentQueue<JSONNode> messageReceiveQueue = new ConcurrentQueue<JSONNode>();
 
-  public event ConnectHandler connectEvent;
-  public EventArgs connectEventArgs = null;
-  public delegate void ConnectHandler(Client client, EventArgs connectEventArgs);
-
-  public Client () {
+  public Client()
+  {
     if (Client.instance != null) throw new Exception("Multiple clients not implemented yet");
     Client.instance = this;
   }
@@ -51,12 +47,12 @@ public class Client
     {
       //Add timeout here
     }
-    OnConnectEventArgs oca = new OnConnectEventArgs();
-    oca.host = this.clientHost;
-    if (this.connectEvent != null)
-    {
-      this.connectEvent(this, oca);
-    }
+    JSONObject connectMsg = new JSONObject();
+    connectMsg.Add("type", new JSONString("connect"));
+    connectMsg.Add("host", new JSONString(this.clientHost));
+    connectMsg.Add("port", new JSONNumber(this.clientPort));
+    messageReceiveQueue.Enqueue(connectMsg);
+    
     while (this.clientKeepAlive)
     {
       while (
@@ -68,12 +64,8 @@ public class Client
       ) != 0)
       {
         string msg = Encoding.ASCII.GetString(this.clientReceiveBuffer, 0, this.clientReceiveBufferLength);
-        OnMessageEventArgs oma = new OnMessageEventArgs();
-        oma.message = msg;
-        if (this.messageReceivedEvent != null)
-        {
-          this.messageReceivedEvent(this, oma);
-        }
+        JSONNode json = JSON.Parse(msg);
+        this.messageReceiveQueue.Enqueue(json);
       }
     }
   }
@@ -84,7 +76,8 @@ public class Client
     this.clientSocketThread.Abort();
   }
 
-  public bool SendJSON (JSONNode msg) {
+  public bool SendJSON(JSONNode msg)
+  {
     this.SendMessage(msg.ToString());
     return true;
   }
@@ -120,14 +113,3 @@ public class Client
     }
   }
 }
-
-public class OnMessageEventArgs : EventArgs
-{
-  public string message { get; set; }
-}
-
-public class OnConnectEventArgs : EventArgs
-{
-  public string host { get; set; }
-}
-

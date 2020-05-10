@@ -53,6 +53,7 @@ public class Player : MonoBehaviour
   int placeBlockDir = 0;
 
   Client client;
+  MessageDispatcher dispatcher;
 
   // Use this for initialization
   void Start()
@@ -65,23 +66,38 @@ public class Player : MonoBehaviour
     this.SetCameraMode(PlayerCameraMode.Build);
     client = new Client();
     client.Connect("localhost", 10209);
-    client.connectEvent += this.OnConnect;
-    client.messageReceivedEvent += this.OnMessage;
-  }
 
-  private void OnConnect (object sender, EventArgs e) {
-    OnConnectEventArgs args = (OnConnectEventArgs)e;
-    Debug.Log("Connected to " + args.host);
+    dispatcher = new MessageDispatcher(client);
+    dispatcher.messageReceivedEvent += this.OnMessage;
   }
 
   private void OnMessage (object sender, EventArgs e) {
     OnMessageEventArgs args = (OnMessageEventArgs)e;
-    Debug.Log("Message " + args.message);
+    if (args.message["type"] == "block-break") {
+      Vector3 pickPoint = new Vector3(
+        args.message["x"].AsFloat,
+        args.message["y"].AsFloat,
+        args.message["z"].AsFloat
+      );
+      VoxelChunk.DEBUG_INSTANCE.setBlockWorld(pickPoint, 0, 0);
+      VoxelChunk.DEBUG_INSTANCE.build();
+    } else if (args.message["type"] == "block-place") {
+      Vector3 pickPoint = new Vector3(
+        args.message["x"].AsFloat,
+        args.message["y"].AsFloat,
+        args.message["z"].AsFloat
+      );
+      VoxelChunk.DEBUG_INSTANCE.setBlockWorld(pickPoint, args.message["blocktype"].AsInt, args.message["direction"].AsInt);
+      VoxelChunk.DEBUG_INSTANCE.build();
+    } else if (args.message["type"] == "connect") {
+      Debug.Log("Connected");
+    }
   }
 
   // Update is called once per frame
   void Update()
   {
+    this.dispatcher.pullEvents();
     if (Input.GetButtonUp("escape"))
     {
       Cursor.lockState = CursorLockMode.None;
@@ -207,7 +223,8 @@ public class Player : MonoBehaviour
               packet.Add("x", new JSONNumber(Math.Round(pickPoint.x, 4)));
               packet.Add("y", new JSONNumber(Math.Round(pickPoint.y, 4)));
               packet.Add("z", new JSONNumber(Math.Round(pickPoint.z, 4)));
-
+              packet.Add("blocktype", new JSONNumber(placeBlockType));
+              packet.Add("direction", new JSONNumber(placeBlockDir));
               this.client.SendJSON( packet );
             }
           }

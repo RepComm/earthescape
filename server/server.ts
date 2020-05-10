@@ -78,14 +78,23 @@ class ClientConn {
 
 let clients = new Array<ClientConn>();
 
+function broadcast (msg: string, except:ClientConn|undefined) {
+  for (let client of clients) {
+    if (except === undefined || client !== except) {
+      client.sendString(msg);
+    }
+  }
+}
+
 function onClientMessage(client: ClientConn, msg: string) {
   //console.log(`[Server] Client ${client} sent ${msg}`);
   try {
     console.log(JSON.parse(msg));
   } catch (ex) {
-    console.log("\"" + msg + "\"");
+    console.log("JSON wasn't parsed correctly!", msg);
+    return;
   }
-  client.sendString(JSON.stringify({type:"test",msg:"Hello World"}));
+  broadcast(msg, client);
 }
 
 for await (const socket of tcpServer) {

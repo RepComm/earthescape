@@ -50,6 +50,7 @@
      <Compile Include="Assets\MeshUtils\VoxelChunk.cs" />
      <Compile Include="Assets\MeshUtils\VoxelDefinitions.cs" />
      <Compile Include="Assets\Network\Client.cs" />
+     <Compile Include="Assets\Network\MessageDispatcher.cs" />
      <Compile Include="Assets\Player\Player.cs" />
      <Compile Include="Assets\Ship\Ship.cs" />
      <Compile Include="Assets\Ship\ShipController.cs" />

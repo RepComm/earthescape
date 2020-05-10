@@ -8,6 +8,7 @@ using UnityEngine;
 [RequireComponent(typeof(MeshRenderer))]
 public class VoxelChunk : MonoBehaviour
 {
+  public static VoxelChunk DEBUG_INSTANCE;
   Storage3D storage;
   byte[] dataToSet;
 
@@ -31,6 +32,10 @@ public class VoxelChunk : MonoBehaviour
   int depth = 8;
 
   int bytesPerCell = 2;
+
+  public VoxelChunk () {
+    DEBUG_INSTANCE = this;
+  }
 
   void Awake()
   {
@@ -204,5 +209,16 @@ public class VoxelChunk : MonoBehaviour
       Quaternion.Inverse(this.transform.rotation)
     );
     return worldPoint;
+  }
+}
+
+class VoxelUpdate {
+  Vector3 point;
+  int blocktype;
+  int direction;
+  VoxelUpdate (Vector3 point, int blocktype, int direction) {
+    this.point = point;
+    this.blocktype = blocktype;
+    this.direction = direction;
   }
 }
