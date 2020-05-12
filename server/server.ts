@@ -1,4 +1,14 @@
 
+let resources = new Map<number, any>();
+
+function createResourceId () {
+  let highest = 0;
+  for (let key of resources.keys()) {
+    if (key > highest) highest = key;
+  }
+  return highest + 1;
+}
+
 let encoder: TextEncoder = new TextEncoder();
 let decoder: TextDecoder = new TextDecoder();
 
@@ -12,6 +22,7 @@ let msg = "Hello World";
 let buff: Uint8Array;
 
 class ClientConn {
+  resourceId: number = -1;
   socket: Deno.Conn;
   receiveBuffer: Uint8Array;
   receiveBufferTemp: Uint8Array | undefined = undefined;
@@ -19,9 +30,10 @@ class ClientConn {
   messageListeners: Array<Function> = new Array();
   readIntervalID: number = -1;
   readLock: boolean = false;
-  constructor(socket: Deno.Conn) {
+  constructor(socket: Deno.Conn, resourceId: number) {
     this.socket = socket;
     this.receiveBuffer = new Uint8Array(1024);
+    this.resourceId = resourceId;
   }
 
   listen(f: Function) {
@@ -86,21 +98,67 @@ function broadcast (msg: string, except:ClientConn|undefined) {
   }
 }
 
+const broadcastMessageTypes = [
+  "chat",
+  "move",
+  "setblock"
+];
+
+function shouldBroadcast (json: {type?:string}): boolean {
+  let type: string|undefined = json["type"];
+  return type===undefined||broadcastMessageTypes.includes(type);
+}
+
 function onClientMessage(client: ClientConn, msg: string) {
-  //console.log(`[Server] Client ${client} sent ${msg}`);
+  let json;
   try {
-    console.log(JSON.parse(msg));
+    json = JSON.parse(msg);
   } catch (ex) {
     console.log("JSON wasn't parsed correctly!", msg);
     return;
   }
-  broadcast(msg, client);
+  console.log(json);
+  switch (json.type) {
+    case "init":
+      resources.delete(json.oldResourceId);
+      resources.set(json.resourceId, client);
+      client.resourceId = json.resourceId;
+      break;
+    case "create-resource-id":
+      let packet = {
+        type:"respond-resource-id",
+        resourceId:createResourceId()
+      }
+      resources.set(packet.resourceId, {
+        owner:client.resourceId,
+        resourceId:packet.resourceId,
+        type:"pending"
+      });
+      client.sendJson(packet);
+      break;
+    case "create-ship":
+      if (!resources.has(json.resourceId)) throw "Please patch me..";
+      let rez = resources.get(json.resourceId);
+      if (rez.type === "pending") {
+        rez.type = "ship";
+        rez.data = json.data;
+      }
+      break;
+  }
+  if (shouldBroadcast(json)) {
+    broadcast(msg, client);
+  }
 }
 
 for await (const socket of tcpServer) {
-  let client = new ClientConn(socket);
+  let client = new ClientConn(socket, createResourceId());
+  resources.set(client.resourceId, client);
   clients.push(client);
   client.listen(onClientMessage);
   console.log("Client connected");
   client.beginReadLoop();
+  client.sendJson({
+    type:"init",
+    resourceId:client.resourceId
+  });
 }

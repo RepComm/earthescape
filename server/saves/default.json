@@ -1,0 +1,9 @@
+{
+  "resources":{
+    "0":{
+      "type":"ship",
+      "data":[1],
+      "owner":-1
+    }
+  }
+}

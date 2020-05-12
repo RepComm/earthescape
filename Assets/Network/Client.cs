@@ -64,6 +64,7 @@ public class Client
       ) != 0)
       {
         string msg = Encoding.ASCII.GetString(this.clientReceiveBuffer, 0, this.clientReceiveBufferLength);
+        Debug.Log(msg);
         JSONNode json = JSON.Parse(msg);
         this.messageReceiveQueue.Enqueue(json);
       }
