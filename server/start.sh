@@ -1,1 +1,1 @@
-deno --allow-net ./server.ts
+deno --allow-net --allow-write --allow-read ./server.ts

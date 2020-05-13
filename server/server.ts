@@ -1,12 +1,37 @@
 
-let resources = new Map<number, any>();
+import { writeFileStrSync, readJsonSync } from "https://deno.land/std/fs/mod.ts";
 
-function createResourceId () {
-  let highest = 0;
-  for (let key of resources.keys()) {
-    if (key > highest) highest = key;
+let resources: any = {};
+
+function saveResources () {
+  writeFileStrSync(
+    "./resources.json",
+    JSON.stringify(resources, (key, value)=>{
+      if (key === "instance") return undefined;
+      return value;
+    })
+  );
+}
+
+function loadResources () {
+  let rez: any = readJsonSync("./resources.json");
+  for (let key in rez) {
+    //Skip unconfirmed clients
+    if (rez[key].type === "client" && rez[key].confirmed === false) continue;
+    resources[key] = rez[key];
   }
-  return highest + 1;
+}
+
+loadResources();
+
+function createResourceId (): string {
+  let highest = 0;
+  let ikey:number;
+  for (let key in resources) {
+    ikey = parseInt(key);
+    if (ikey > highest) highest = ikey;
+  }
+  return (highest + 1).toString();
 }
 
 let encoder: TextEncoder = new TextEncoder();
@@ -18,11 +43,8 @@ const tcpServer = Deno.listen({
   transport: "tcp"
 });
 
-let msg = "Hello World";
-let buff: Uint8Array;
-
 class ClientConn {
-  resourceId: number = -1;
+  resourceId: string = "-1";
   socket: Deno.Conn;
   receiveBuffer: Uint8Array;
   receiveBufferTemp: Uint8Array | undefined = undefined;
@@ -30,7 +52,7 @@ class ClientConn {
   messageListeners: Array<Function> = new Array();
   readIntervalID: number = -1;
   readLock: boolean = false;
-  constructor(socket: Deno.Conn, resourceId: number) {
+  constructor(socket: Deno.Conn, resourceId: string) {
     this.socket = socket;
     this.receiveBuffer = new Uint8Array(1024);
     this.resourceId = resourceId;
@@ -99,6 +121,7 @@ function broadcast (msg: string, except:ClientConn|undefined) {
 }
 
 const broadcastMessageTypes = [
+  "init",
   "chat",
   "move",
   "setblock"
@@ -120,25 +143,31 @@ function onClientMessage(client: ClientConn, msg: string) {
   console.log(json);
   switch (json.type) {
     case "init":
-      resources.delete(json.oldResourceId);
-      resources.set(json.resourceId, client);
+      resources[json.oldResourceId] = undefined;
+      delete resources[json.oldResourceId];
+      resources[json.resourceId] = {
+        instance:client,
+        address:client.socket.remoteAddr,
+        confirmed:true
+      };
       client.resourceId = json.resourceId;
+      saveResources();
       break;
     case "create-resource-id":
       let packet = {
         type:"respond-resource-id",
         resourceId:createResourceId()
       }
-      resources.set(packet.resourceId, {
+      resources[packet.resourceId] = {
         owner:client.resourceId,
         resourceId:packet.resourceId,
         type:"pending"
-      });
+      };
       client.sendJson(packet);
       break;
     case "create-ship":
-      if (!resources.has(json.resourceId)) throw "Please patch me..";
-      let rez = resources.get(json.resourceId);
+      if (resources[json.resourceId] === undefined) throw "Please patch me..";
+      let rez = resources[json.resourceId];
       if (rez.type === "pending") {
         rez.type = "ship";
         rez.data = json.data;
@@ -152,10 +181,17 @@ function onClientMessage(client: ClientConn, msg: string) {
 
 for await (const socket of tcpServer) {
   let client = new ClientConn(socket, createResourceId());
-  resources.set(client.resourceId, client);
+  resources[client.resourceId] = {
+    instance:client,
+    type:"client",
+    address:socket.remoteAddr,
+    confirmed:false
+  };
+  saveResources();
+
   clients.push(client);
   client.listen(onClientMessage);
-  console.log("Client connected");
+  console.log("Client connected ", socket.remoteAddr);
   client.beginReadLoop();
   client.sendJson({
     type:"init",
